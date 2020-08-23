@@ -1,0 +1,98 @@
+#!/bin/bash
+
+sudo fdisk -l
+lsblk -f
+echo "-----
+[ROOT DISK(e.g. sdx1, loop1, nvme0n1)]:"
+read rootdsk
+echo "-----
+[BOOT DISK(e.g. sdx1, loop1, nvme0n1)]:"
+read bootdsk
+
+bye=0
+
+while [ $bye = 0 ]
+do
+	sudo mount /dev/$rootdsk /mnt
+	sudo mount /dev/$bootdsk /mnt/boot/efi
+	
+	echo "Mount done. Now building the grub-install script into chrooted device..."
+	
+	tail -n 64 "$(readlink -f $0)" > /mnt/var/tmp/grub-install.sh && chmod +x /mnt/var/tmp/grub-install.sh
+	
+	echo "Now running the script..."
+	
+	sudo manjaro-chroot /mnt /var/tmp/grub-install.sh
+	
+	bye=1
+done
+
+exit
+
+----------
+
+#
+#
+##
+#### THIS IS FOR CHROOTED(TARGET DEVICE), DO NOT RUN IT AT "SERVER"!!!
+##
+#
+
+echo "<1> if mounted to /boot/efi
+<2> if mounted to /boot
+[1/2]:"
+read boot_is_efi_fd
+
+bye=0
+
+while [ $bye = 0 ]
+do
+	case $boot_is_efi_fd in
+		'1')
+			bootlo=/boot/efi
+	    ;;
+    
+	  	'2')
+			bootlo=/boot
+	    ;;
+	    
+		*)
+			reset && echo "input error: exited."
+			bye=1
+			break
+		;;
+	esac
+	
+	echo "Is Removable Disk? [y/N]"
+	read isremovable
+	
+	echo "Use custom GRUB id in OS? [y/N] (N -> Manjaro)"
+	read customnameingrub
+	case $customnameingrub in
+		'y' | 'Y')
+			echo "[Custom GRUB id]:"
+			read grubid
+		;;
+		
+		*)
+			grubid=Manjaro
+	    ;;
+	esac
+	
+	case $isremovable in
+		'y' | 'Y')
+			sudo grub-install --target=x86_64-efi --efi-directory=$bootlo --removable --bootloader-id=$grubid --recheck
+		;;
+		
+		*)
+			sudo grub-install --target=x86_64-efi --efi-directory=$bootlo --bootloader-id=$grubid --recheck
+	    ;;
+	esac
+	
+	sudo update-grub
+	
+	
+	echo "Finished! Now you can reboot your computer to make affect."
+	bye=1
+done
+sudo rm /var/tmp/grub-install.sh
